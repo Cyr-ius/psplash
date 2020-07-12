@@ -33,22 +33,12 @@ int get_progress(void)
 	char buffer[20];
 	int len;
 
-        /* Connect to the system bus */
-	r = sd_bus_new(&bus);
+    /* Connect to the system bus */
+	r = sd_bus_open_system(&bus);
 	if (r < 0)
 		goto finish;
 
-	r = sd_bus_set_address(bus, "unix:path=/run/systemd/private");
-	if (r < 0)
-		goto finish;
-
-	r = sd_bus_start(bus);
-	if (r < 0) {
-		fprintf(stderr, "Failed to connect to systemd private bus: %s\n", strerror(-r));
-		goto finish;
-        }
-
-        /* Issue the method call and store the respons message in m */
+    /* Issue the method call and store the respons message in m */
 	r = sd_bus_get_property_trivial(bus,
 		"de.pengutronix.rauc",           /* service to contact */
 		"/",          /* object path */
