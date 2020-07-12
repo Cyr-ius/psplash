@@ -13,16 +13,19 @@ if test "x$GCC" = "xyes"; then
 fi
 
 AC_ARG_WITH([systemd], AS_HELP_STRING([--with-systemd], [Build with systemd support]))
-AC_ARG_WITH([rauc], AS_HELP_STRING([--with-rauc], [Build with rauc support]))
 
 AS_IF([test "x$with_systemd" = "xyes"], [
    PKG_CHECK_MODULES(SYSTEMD, libsystemd >= 221)
 ])
+
+AM_CONDITIONAL([HAVE_SYSTEMD], [test "x$with_systemd" = "xyes"])
+
+AC_ARG_WITH([rauc], AS_HELP_STRING([--with-rauc], [Build with rauc support]))
+
 AS_IF([test "x$with_rauc" = "xyes"], [
    PKG_CHECK_MODULES(SYSTEMD, libsystemd >= 221)
 ])
 
-AM_CONDITIONAL([HAVE_SYSTEMD], [test "x$with_systemd" = "xyes"])
 AM_CONDITIONAL([HAVE_RAUC], [test "x$with_rauc" = "xyes"])
 
 AC_SUBST(GCC_FLAGS)
@@ -30,7 +33,7 @@ AC_SUBST(GCC_FLAGS)
 AC_ARG_WITH([font],
     AS_HELP_STRING([--with-font], [Set font to use (default is 'radeon')]),
     [FONT_NAME=$withval],
-    [FONT_NAME=UbuntuR])
+    [FONT_NAME=radeon])
 AC_SUBST([FONT_NAME])
 
 AC_ARG_ENABLE([startup-msg],
