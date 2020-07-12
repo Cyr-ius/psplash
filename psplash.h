@@ -3,15 +3,7 @@
  *
  *  Copyright (c) 2006 Matthew Allum <mallum@o-hand.com>
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  SPDX-License-Identifier: GPL-2.0-or-later
  *
  */
 
@@ -43,9 +35,10 @@
 #include <termios.h>
 #include <unistd.h>
 
-typedef uint8_t  uint8;
+typedef uint8_t uint8;
 typedef uint16_t uint16;
-typedef int            bool;
+typedef int bool;
+int enable_debug;
 
 #ifndef FALSE
 #define FALSE 0
@@ -57,35 +50,27 @@ typedef int            bool;
 
 #define PSPLASH_FIFO "psplash_fifo"
 
-#define CLAMP(x, low, high) \
-   (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
+#define CLAMP(x, low, high) (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
 
-#define DEBUG 0
-
-#if DEBUG
-#define DBG(x, a...) \
-   { printf ( __FILE__ ":%d,%s() " x "\n", __LINE__, __func__, ##a); }
-#else
-#define DBG(x, a...) do {} while (0)
-#endif
+#define DBG(x, a...) do if (enable_debug) {psplash_trace(__FILE__ ":%d,%s() " x "\n", __LINE__, __func__, ##a);} while (0)
 
 #ifdef __GNUC__
-#  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#define UNUSED(x) UNUSED_##x __attribute__((__unused__))
 #else
-#  define UNUSED(x) UNUSED_ ## x
+#define UNUSED(x) UNUSED_##x
 #endif
+
+
 
 typedef struct PSplashFont
 {
-    char *name;				/* Font name. */
-    int   height;			/* Height in pixels. */
-    int   index_mask;			/* ((1 << N) - 1). */
-    int  *offset;			/* (1 << N) offsets into index. */
-    int  *index;
-    u_int32_t *content;
-}
-PSplashFont;
-
+   char *name;     /* Font name. */
+   int height;     /* Height in pixels. */
+   int index_mask; /* ((1 << N) - 1). */
+   int *offset;    /* (1 << N) offsets into index. */
+   int *index;
+   u_int32_t *content;
+} PSplashFont;
 
 #include "psplash-fb.h"
 #include "psplash-console.h"

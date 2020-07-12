@@ -5,15 +5,7 @@
  *
  *  Parts of this file based on 'usplash' copyright Matthew Garret.
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  SPDX-License-Identifier: GPL-2.0-or-later
  *
  */
 
@@ -29,13 +21,13 @@
 
 int main(int argc, char **argv) 
 {
-  char *tmpdir;
+  char *rundir;
   int   pipe_fd;
 
-  tmpdir = getenv("TMPDIR");
+  rundir = getenv("PSPLASH_FIFO_DIR");
 
-  if (!tmpdir)
-    tmpdir = "/tmp";
+  if (!rundir)
+    rundir = "/run";
 
   if (argc!=2) 
     {
@@ -43,7 +35,7 @@ int main(int argc, char **argv)
       exit(-1);
     }
   
-  chdir(tmpdir);
+  chdir(rundir);
   
   if ((pipe_fd = open (PSPLASH_FIFO,O_WRONLY|O_NONBLOCK)) == -1)
     {

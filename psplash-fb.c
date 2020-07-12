@@ -3,42 +3,69 @@
  *
  *  Copyright (c) 2006 Matthew Allum <mallum@o-hand.com>
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  SPDX-License-Identifier: GPL-2.0-or-later
  *
  */
 
 #include <endian.h>
 #include "psplash.h"
 
-void
-psplash_fb_destroy (PSplashFB *fb)
+static void
+psplash_wait_for_vsync(PSplashFB *fb)
 {
-  if (fb->alloc == 1)
-      free(fb->base);
+  int err = ioctl(fb->fd, FBIO_WAITFORVSYNC, 0);
+  if (err != 0)
+    fprintf(stderr, "Error, FB vsync ioctl [%d]\n", err);
+}
+
+void psplash_fb_flip(PSplashFB *fb, int sync)
+{
+  char *tmp;
+
+  if (fb->double_buffering)
+  {
+
+    /* Carry out the flip after a vsync */
+    psplash_wait_for_vsync(fb);
+
+    /* Switch the current activate area in fb */
+    if (fb->fb_var.yoffset == 0)
+    {
+      fb->fb_var.yoffset = fb->real_height;
+    }
+    else
+    {
+      fb->fb_var.yoffset = 0;
+    }
+    if (ioctl(fb->fd, FBIOPAN_DISPLAY, &fb->fb_var) == -1)
+    {
+      fprintf(stderr, "psplash_fb_flip: FBIOPAN_DISPLAY failed\n");
+    }
+
+    /* Switch the front and back data pointers */
+    tmp = fb->fdata;
+    fb->fdata = fb->bdata;
+    fb->bdata = tmp;
+
+    /* Sync new front to new back when requested */
+    if (sync)
+    {
+      memcpy(fb->bdata, fb->fdata, fb->stride * fb->real_height);
+    }
+  }
+}
+
+void psplash_fb_destroy(PSplashFB *fb)
+{
   if (fb->fd >= 0)
-    close (fb->fd);
+    close(fb->fd);
 
   free(fb);
 }
 
-void
-psplash_fb_flush (PSplashFB *fb)
-{
-  if (fb->alloc == 1)
-      pwrite(fb->fd, fb->base, fb->stride * fb->height, 0);
-}
-
 static int
-attempt_to_change_pixel_format (PSplashFB *fb,
-                                struct fb_var_screeninfo *fb_var)
+attempt_to_change_pixel_format(PSplashFB *fb,
+                               struct fb_var_screeninfo *fb_var)
 {
   /* By default the framebuffer driver may have set an oversized
    * yres_virtual to support VT scrolling via the panning interface.
@@ -66,16 +93,16 @@ attempt_to_change_pixel_format (PSplashFB *fb,
   fb_var->transp.offset = 0;
   fb_var->transp.length = 0;
 
-  if (ioctl (fb->fd, FBIOPUT_VSCREENINFO, fb_var) == 0)
-    {
-      fprintf(stdout, "Switched to a 32 bpp 8,8,8 frame buffer\n");
-      return 1;
-    }
+  if (ioctl(fb->fd, FBIOPUT_VSCREENINFO, fb_var) == 0)
+  {
+    fprintf(stdout, "Switched to a 32 bpp 8,8,8 frame buffer\n");
+    return 1;
+  }
   else
-    {
-      fprintf(stderr,
-              "Error, failed to switch to a 32 bpp 8,8,8 frame buffer\n");
-    }
+  {
+    fprintf(stderr,
+            "Error, failed to switch to a 32 bpp 8,8,8 frame buffer\n");
+  }
 
   /* Otherwise try a 16bpp 5,6,5 format */
 
@@ -93,91 +120,125 @@ attempt_to_change_pixel_format (PSplashFB *fb,
   fb_var->transp.offset = 0;
   fb_var->transp.length = 0;
 
-  if (ioctl (fb->fd, FBIOPUT_VSCREENINFO, fb_var) == 0)
-    {
-      fprintf(stdout, "Switched to a 16 bpp 5,6,5 frame buffer\n");
-      return 1;
-    }
+  if (ioctl(fb->fd, FBIOPUT_VSCREENINFO, fb_var) == 0)
+  {
+    fprintf(stdout, "Switched to a 16 bpp 5,6,5 frame buffer\n");
+    return 1;
+  }
   else
-    {
-      fprintf(stderr,
-              "Error, failed to switch to a 16 bpp 5,6,5 frame buffer\n");
-    }
+  {
+    fprintf(stderr,
+            "Error, failed to switch to a 16 bpp 5,6,5 frame buffer\n");
+  }
 
   return 0;
 }
 
-PSplashFB*
-psplash_fb_new (int angle, int fbdev_id)
+PSplashFB *
+psplash_fb_new(int angle, int fbdev_id)
 {
   struct fb_var_screeninfo fb_var;
   struct fb_fix_screeninfo fb_fix;
-  int                      off;
-  char                     fbdev[9] = "/dev/fb0";
+  int off;
+  char fbdev[9] = "/dev/fb0";
 
   PSplashFB *fb = NULL;
 
   if (fbdev_id > 0 && fbdev_id < 10)
-    {
-        // Conversion from integer to ascii.
-        fbdev[7] = fbdev_id + 48;
-    }
+  {
+    // Conversion from integer to ascii.
+    fbdev[7] = fbdev_id + 48;
+  }
 
-  if ((fb = malloc (sizeof(PSplashFB))) == NULL)
-    {
-      perror ("Error no memory");
-      goto fail;
-    }
+  if ((fb = malloc(sizeof(PSplashFB))) == NULL)
+  {
+    perror("Error no memory");
+    goto fail;
+  }
 
-  memset (fb, 0, sizeof(PSplashFB));
+  memset(fb, 0, sizeof(PSplashFB));
 
   fb->fd = -1;
-  fb->alloc = -1;
 
-  if ((fb->fd = open (fbdev, O_RDWR)) < 0)
-    {
-      fprintf(stderr,
-              "Error opening %s\n",
-              fbdev);
-      goto fail;
-    }
+  if ((fb->fd = open(fbdev, O_RDWR)) < 0)
+  {
+    fprintf(stderr,
+            "Error opening %s\n",
+            fbdev);
+    goto fail;
+  }
 
-  if (ioctl (fb->fd, FBIOGET_VSCREENINFO, &fb_var) == -1)
-    {
-      perror ("Error getting variable framebuffer info");
-      goto fail;
-    }
+  if (ioctl(fb->fd, FBIOGET_VSCREENINFO, &fb_var) == -1)
+  {
+    perror("Error getting variable framebuffer info");
+    goto fail;
+  }
 
   if (fb_var.bits_per_pixel < 16)
-    {
-      fprintf(stderr,
-              "Error, no support currently for %i bpp frame buffers\n"
-              "Trying to change pixel format...\n",
-              fb_var.bits_per_pixel);
-      if (!attempt_to_change_pixel_format (fb, &fb_var))
-        goto fail;
-    }
-
-  if (ioctl (fb->fd, FBIOGET_VSCREENINFO, &fb_var) == -1)
-    {
-      perror ("Error getting variable framebuffer info (2)");
+  {
+    fprintf(stderr,
+            "Error, no support currently for %i bpp frame buffers\n"
+            "Trying to change pixel format...\n",
+            fb_var.bits_per_pixel);
+    if (!attempt_to_change_pixel_format(fb, &fb_var))
       goto fail;
-    }
+  }
+
+  if (ioctl(fb->fd, FBIOGET_VSCREENINFO, &fb_var) == -1)
+  {
+    perror("Error getting variable framebuffer info (2)");
+    goto fail;
+  }
 
   /* NB: It looks like the fbdev concept of fixed vs variable screen info is
    * broken. The line_length is part of the fixed info but it can be changed
    * if you set a new pixel format. */
-  if (ioctl (fb->fd, FBIOGET_FSCREENINFO, &fb_fix) == -1)
-    {
-      perror ("Error getting fixed framebuffer info");
-      goto fail;
-    }
+  if (ioctl(fb->fd, FBIOGET_FSCREENINFO, &fb_fix) == -1)
+  {
+    perror("Error getting fixed framebuffer info");
+    goto fail;
+  }
 
-  fb->real_width  = fb->width  = fb_var.xres;
+  /* Setup double virtual resolution for double buffering */
+  if (ioctl(fb->fd, FBIOPAN_DISPLAY, &fb_var) == -1)
+  {
+    fprintf(stderr, "FBIOPAN_DISPLAY not supported, double buffering disabled");
+  }
+  else
+  {
+    if (fb_var.yres_virtual == fb_var.yres * 2)
+    {
+      DBG("Virtual resolution already double");
+      fb->double_buffering = 1;
+    }
+    else
+    {
+      fb_var.yres_virtual = fb_var.yres * 2;
+      if (ioctl(fb->fd, FBIOPUT_VSCREENINFO, &fb_var) == -1)
+      {
+        fprintf(stderr, "FBIOPUT_VSCREENINFO failed, double buffering disabled");
+      }
+      else
+      {
+        if (ioctl(fb->fd, FBIOGET_FSCREENINFO, &fb_fix) == -1)
+        {
+          perror(" Error getting the fixed framebuffer info");
+          goto fail;
+        }
+        else
+        {
+          DBG("Virtual resolution set to double");
+          fb->double_buffering = 1;
+        }
+      }
+    }
+  }
+
+  fb->real_width = fb->width = fb_var.xres;
   fb->real_height = fb->height = fb_var.yres;
-  fb->bpp    = fb_var.bits_per_pixel;
+  fb->bpp = fb_var.bits_per_pixel;
   fb->stride = fb_fix.line_length;
-  fb->type   = fb_fix.type;
+  fb->type = fb_fix.type;
   fb->visual = fb_fix.visual;
 
   fb->red_offset = fb_var.red.offset;
@@ -189,51 +250,74 @@ psplash_fb_new (int angle, int fbdev_id)
 
   if (fb->red_offset == 11 && fb->red_length == 5 &&
       fb->green_offset == 5 && fb->green_length == 6 &&
-      fb->blue_offset == 0 && fb->blue_length == 5) {
-         fb->rgbmode = RGB565;
-  } else if (fb->red_offset == 0 && fb->red_length == 5 &&
-      fb->green_offset == 5 && fb->green_length == 6 &&
-      fb->blue_offset == 11 && fb->blue_length == 5) {
-         fb->rgbmode = BGR565;
-  } else if (fb->red_offset == 16 && fb->red_length == 8 &&
-      fb->green_offset == 8 && fb->green_length == 8 &&
-      fb->blue_offset == 0 && fb->blue_length == 8) {
-         fb->rgbmode = RGB888;
-  } else if (fb->red_offset == 0 && fb->red_length == 8 &&
-      fb->green_offset == 8 && fb->green_length == 8 &&
-      fb->blue_offset == 16 && fb->blue_length == 8) {
-         fb->rgbmode = BGR888;
-  } else {
-         fb->rgbmode = GENERIC;
+      fb->blue_offset == 0 && fb->blue_length == 5)
+  {
+    fb->rgbmode = RGB565;
+  }
+  else if (fb->red_offset == 0 && fb->red_length == 5 &&
+           fb->green_offset == 5 && fb->green_length == 6 &&
+           fb->blue_offset == 11 && fb->blue_length == 5)
+  {
+    fb->rgbmode = BGR565;
+  }
+  else if (fb->red_offset == 16 && fb->red_length == 8 &&
+           fb->green_offset == 8 && fb->green_length == 8 &&
+           fb->blue_offset == 0 && fb->blue_length == 8)
+  {
+    fb->rgbmode = RGB888;
+  }
+  else if (fb->red_offset == 0 && fb->red_length == 8 &&
+           fb->green_offset == 8 && fb->green_length == 8 &&
+           fb->blue_offset == 16 && fb->blue_length == 8)
+  {
+    fb->rgbmode = BGR888;
+  }
+  else
+  {
+    fb->rgbmode = GENERIC;
   }
 
   DBG("width: %i, height: %i, bpp: %i, stride: %i",
       fb->width, fb->height, fb->bpp, fb->stride);
 
-  size_t size = fb->stride * fb->height;
-
-  fb->base = (char *) mmap ((caddr_t) NULL,
-			    /*fb_fix.smem_len */
-			    size,
-			    PROT_READ|PROT_WRITE,
-			    MAP_SHARED,
-			    fb->fd, 0);
+  fb->base = (char *)mmap((caddr_t)NULL,
+                          fb_fix.smem_len,
+                          PROT_READ | PROT_WRITE,
+                          MAP_SHARED,
+                          fb->fd, 0);
 
   if (fb->base == (char *)-1)
-    {
-      fprintf(stdout, "Error cannot mmap framebuffer. Using malloc instead.\n");
-	  fb->base = (char*)malloc(size);
-      if (!fb->base)
-        {
-          perror("Error cannot allocate memory.");
-          goto fail;
-        }
-      fb->alloc = 1;
-    }
+  {
+    perror("Error cannot mmap framebuffer ");
+    goto fail;
+  }
 
-  off = (unsigned long) fb_fix.smem_start % (unsigned long) getpagesize();
+  off = (unsigned long)fb_fix.smem_start % (unsigned long)getpagesize();
 
   fb->data = fb->base + off;
+
+  if (fb->double_buffering)
+  {
+    /* fb_var is needed when flipping the buffers */
+    memcpy(&fb->fb_var, &fb_var, sizeof(struct fb_var_screeninfo));
+    if (fb->fb_var.yoffset == 0)
+    {
+      printf("to back\n");
+      fb->fdata = fb->data;
+      fb->bdata = fb->data + fb->stride * fb->height;
+    }
+    else
+    {
+      printf("to front\n");
+      fb->fdata = fb->data + fb->stride * fb->height;
+      fb->bdata = fb->data;
+    }
+  }
+  else
+  {
+    fb->fdata = fb->data;
+    fb->bdata = fb->data;
+  }
 
 #if 0
   /* FIXME: No support for 8pp as yet  */
@@ -260,309 +344,309 @@ psplash_fb_new (int angle, int fbdev_id)
   fb->angle = angle;
 
   switch (fb->angle)
-    {
-    case 270:
-    case 90:
-      fb->width  = fb->real_height;
-      fb->height = fb->real_width;
-      break;
-    case 180:
-    case 0:
-    default:
-      break;
-    }
+  {
+  case 270:
+  case 90:
+    fb->width = fb->real_height;
+    fb->height = fb->real_width;
+    break;
+  case 180:
+  case 0:
+  default:
+    break;
+  }
 
   return fb;
 
- fail:
+fail:
 
   if (fb)
-    psplash_fb_destroy (fb);
+    psplash_fb_destroy(fb);
 
   return NULL;
 }
 
-#define OFFSET(fb,x,y) (((y) * (fb)->stride) + ((x) * ((fb)->bpp >> 3)))
+#define OFFSET(fb, x, y) (((y) * (fb)->stride) + ((x) * ((fb)->bpp >> 3)))
 
 static inline void
-psplash_fb_plot_pixel (PSplashFB    *fb,
-		       int          x,
-		       int          y,
-		       uint8        red,
-		       uint8        green,
-		       uint8        blue)
+psplash_fb_plot_pixel(PSplashFB *fb,
+                      int x,
+                      int y,
+                      uint8 red,
+                      uint8 green,
+                      uint8 blue)
 {
+  /* Always write to back data (bdata) which points to the right data with or
+   * without double buffering support */
   int off;
 
-  if (x < 0 || x > fb->width-1 || y < 0 || y > fb->height-1)
+  if (x < 0 || x > fb->width - 1 || y < 0 || y > fb->height - 1)
     return;
 
   switch (fb->angle)
+  {
+  case 270:
+    off = OFFSET(fb, fb->height - y - 1, x);
+    break;
+  case 180:
+    off = OFFSET(fb, fb->width - x - 1, fb->height - y - 1);
+    break;
+  case 90:
+    off = OFFSET(fb, y, fb->width - x - 1);
+    break;
+  case 0:
+  default:
+    off = OFFSET(fb, x, y);
+    break;
+  }
+
+  if (fb->rgbmode == RGB565 || fb->rgbmode == RGB888)
+  {
+    switch (fb->bpp)
     {
-    case 270:
-      off = OFFSET (fb, fb->height - y - 1, x);
+    case 24:
+#if __BYTE_ORDER == __BIG_ENDIAN
+      *(fb->bdata + off + 0) = red;
+      *(fb->bdata + off + 1) = green;
+      *(fb->bdata + off + 2) = blue;
+#else
+      *(fb->bdata + off + 0) = blue;
+      *(fb->bdata + off + 1) = green;
+      *(fb->bdata + off + 2) = red;
+#endif
       break;
-    case 180:
-      off = OFFSET (fb, fb->width - x - 1, fb->height - y - 1);
+    case 32:
+      *(volatile uint32_t *)(fb->bdata + off) = (red << 16) | (green << 8) | (blue);
       break;
-    case 90:
-      off = OFFSET (fb, y, fb->width - x - 1);
+
+    case 16:
+      *(volatile uint16_t *)(fb->bdata + off) = ((red >> 3) << 11) | ((green >> 2) << 5) | (blue >> 3);
       break;
-    case 0:
     default:
-      off = OFFSET (fb, x, y);
+      /* depth not supported yet */
       break;
     }
-
-  if (fb->rgbmode == RGB565 || fb->rgbmode == RGB888) {
+  }
+  else if (fb->rgbmode == BGR565 || fb->rgbmode == BGR888)
+  {
     switch (fb->bpp)
-      {
-      case 24:
+    {
+    case 24:
 #if __BYTE_ORDER == __BIG_ENDIAN
-        *(fb->data + off + 0) = red;
-        *(fb->data + off + 1) = green;
-        *(fb->data + off + 2) = blue;
+      *(fb->bdata + off + 0) = blue;
+      *(fb->bdata + off + 1) = green;
+      *(fb->bdata + off + 2) = red;
 #else
-        *(fb->data + off + 0) = blue;
-        *(fb->data + off + 1) = green;
-        *(fb->data + off + 2) = red;
+      *(fb->bdata + off + 0) = red;
+      *(fb->bdata + off + 1) = green;
+      *(fb->bdata + off + 2) = blue;
 #endif
-        break;
-      case 32:
-        *(volatile uint32_t *) (fb->data + off)
-          = (red << 16) | (green << 8) | (blue);
-        break;
-
-      case 16:
-        *(volatile uint16_t *) (fb->data + off)
-	  = ((red >> 3) << 11) | ((green >> 2) << 5) | (blue >> 3);
-        break;
-      default:
-        /* depth not supported yet */
-        break;
-      }
-  } else if (fb->rgbmode == BGR565 || fb->rgbmode == BGR888) {
+      break;
+    case 32:
+      *(volatile uint32_t *)(fb->bdata + off) = (blue << 16) | (green << 8) | (red);
+      break;
+    case 16:
+      *(volatile uint16_t *)(fb->bdata + off) = ((blue >> 3) << 11) | ((green >> 2) << 5) | (red >> 3);
+      break;
+    default:
+      /* depth not supported yet */
+      break;
+    }
+  }
+  else
+  {
     switch (fb->bpp)
-      {
-      case 24:
-#if __BYTE_ORDER == __BIG_ENDIAN
-        *(fb->data + off + 0) = blue;
-        *(fb->data + off + 1) = green;
-        *(fb->data + off + 2) = red;
-#else
-        *(fb->data + off + 0) = red;
-        *(fb->data + off + 1) = green;
-        *(fb->data + off + 2) = blue;
-#endif
-        break;
-      case 32:
-        *(volatile uint32_t *) (fb->data + off)
-          = (blue << 16) | (green << 8) | (red);
-        break;
-      case 16:
-        *(volatile uint16_t *) (fb->data + off)
-	  = ((blue >> 3) << 11) | ((green >> 2) << 5) | (red >> 3);
-        break;
-      default:
-        /* depth not supported yet */
-        break;
-      }
-  } else {
-    switch (fb->bpp)
-      {
-      case 32:
-        *(volatile uint32_t *) (fb->data + off)
-	  = ((red >> (8 - fb->red_length)) << fb->red_offset) 
-	      | ((green >> (8 - fb->green_length)) << fb->green_offset)
-	      | ((blue >> (8 - fb->blue_length)) << fb->blue_offset);
-        break;
-      case 16:
-        *(volatile uint16_t *) (fb->data + off)
-	  = ((red >> (8 - fb->red_length)) << fb->red_offset) 
-	      | ((green >> (8 - fb->green_length)) << fb->green_offset)
-	      | ((blue >> (8 - fb->blue_length)) << fb->blue_offset);
-        break;
-      default:
-        /* depth not supported yet */
-        break;
-      }
+    {
+    case 32:
+      *(volatile uint32_t *)(fb->bdata + off) = ((red >> (8 - fb->red_length)) << fb->red_offset) | ((green >> (8 - fb->green_length)) << fb->green_offset) | ((blue >> (8 - fb->blue_length)) << fb->blue_offset);
+      break;
+    case 16:
+      *(volatile uint16_t *)(fb->bdata + off) = ((red >> (8 - fb->red_length)) << fb->red_offset) | ((green >> (8 - fb->green_length)) << fb->green_offset) | ((blue >> (8 - fb->blue_length)) << fb->blue_offset);
+      break;
+    default:
+      /* depth not supported yet */
+      break;
+    }
   }
 }
 
-void
-psplash_fb_draw_rect (PSplashFB    *fb,
-		      int          x,
-		      int          y,
-		      int          width,
-		      int          height,
-		      uint8        red,
-		      uint8        green,
-		      uint8        blue)
+void psplash_fb_draw_rect(PSplashFB *fb,
+                          int x,
+                          int y,
+                          int width,
+                          int height,
+                          uint8 red,
+                          uint8 green,
+                          uint8 blue)
 {
   int dx, dy;
 
-  for (dy=0; dy < height; dy++)
-    for (dx=0; dx < width; dx++)
-	psplash_fb_plot_pixel (fb, x+dx, y+dy, red, green, blue);
+  for (dy = 0; dy < height; dy++)
+    for (dx = 0; dx < width; dx++)
+      psplash_fb_plot_pixel(fb, x + dx, y + dy, red, green, blue);
 }
 
-void
-psplash_fb_draw_image (PSplashFB    *fb,
-		       int          x,
-		       int          y,
-		       int          img_width,
-		       int          img_height,
-		       int          img_bytes_per_pixel,
-		       int          img_rowstride,
-		       uint8       *rle_data)
+void psplash_fb_draw_image(PSplashFB *fb,
+                           int x,
+                           int y,
+                           int img_width,
+                           int img_height,
+                           int img_bytes_per_pixel,
+                           int img_rowstride,
+                           uint8 *rle_data)
 {
-  uint8       *p = rle_data;
-  int          dx = 0, dy = 0,  total_len;
+  uint8 *p = rle_data;
+  int dx = 0, dy = 0, total_len;
   unsigned int len;
 
   total_len = img_rowstride * img_height;
 
   /* FIXME: Optimise, check for over runs ... */
   while ((p - rle_data) < total_len)
+  {
+    len = *(p++);
+
+    if (len & 128)
     {
-      len = *(p++);
+      len -= 128;
 
-      if (len & 128)
-	{
-	  len -= 128;
+      if (len == 0)
+        break;
 
-	  if (len == 0) break;
+      do
+      {
+        if ((img_bytes_per_pixel < 4 || *(p + 3)) && dx < img_width)
+          psplash_fb_plot_pixel(fb, x + dx, y + dy, *(p), *(p + 1), *(p + 2));
+        if (++dx * img_bytes_per_pixel >= img_rowstride)
+        {
+          dx = 0;
+          dy++;
+        }
+      } while (--len);
 
-	  do
-	    {
-	      if ((img_bytes_per_pixel < 4 || *(p+3)) && dx < img_width)
-	        psplash_fb_plot_pixel (fb, x+dx, y+dy, *(p), *(p+1), *(p+2));
-	      if (++dx * img_bytes_per_pixel >= img_rowstride) { dx=0; dy++; }
-	    }
-	  while (--len);
-
-	  p += img_bytes_per_pixel;
-	}
-      else
-	{
-	  if (len == 0) break;
-
-	  do
-	    {
-	      if ((img_bytes_per_pixel < 4 || *(p+3)) && dx < img_width)
-	        psplash_fb_plot_pixel (fb, x+dx, y+dy, *(p), *(p+1), *(p+2));
-	      if (++dx * img_bytes_per_pixel >= img_rowstride) { dx=0; dy++; }
-	      p += img_bytes_per_pixel;
-	    }
-	  while (--len && (p - rle_data) < total_len);
-	}
+      p += img_bytes_per_pixel;
     }
+    else
+    {
+      if (len == 0)
+        break;
+
+      do
+      {
+        if ((img_bytes_per_pixel < 4 || *(p + 3)) && dx < img_width)
+          psplash_fb_plot_pixel(fb, x + dx, y + dy, *(p), *(p + 1), *(p + 2));
+        if (++dx * img_bytes_per_pixel >= img_rowstride)
+        {
+          dx = 0;
+          dy++;
+        }
+        p += img_bytes_per_pixel;
+      } while (--len && (p - rle_data) < total_len);
+    }
+  }
 }
 
 /* Font rendering code based on BOGL by Ben Pfaff */
 
 static int
-psplash_font_glyph (const PSplashFont *font, wchar_t wc, u_int32_t **bitmap)
+psplash_font_glyph(const PSplashFont *font, wchar_t wc, u_int32_t **bitmap)
 {
   int mask = font->index_mask;
   int i;
 
   for (;;)
+  {
+    for (i = font->offset[wc & mask]; font->index[i]; i += 2)
     {
-      for (i = font->offset[wc & mask]; font->index[i]; i += 2)
-	{
-	  if ((wchar_t)(font->index[i] & ~mask) == (wc & ~mask))
-	    {
-	      if (bitmap != NULL)
-		*bitmap = &font->content[font->index[i+1]];
-	      return font->index[i] & mask;
-	    }
-	}
+      if ((wchar_t)(font->index[i] & ~mask) == (wc & ~mask))
+      {
+        if (bitmap != NULL)
+          *bitmap = &font->content[font->index[i + 1]];
+        return font->index[i] & mask;
+      }
     }
+  }
   return 0;
 }
 
-void
-psplash_fb_text_size (int                *width,
-		      int                *height,
-		      const PSplashFont  *font,
-		      const char         *text)
+void psplash_fb_text_size(int *width,
+                          int *height,
+                          const PSplashFont *font,
+                          const char *text)
 {
-  char   *c = (char*)text;
+  char *c = (char *)text;
   wchar_t wc;
-  int     k, n, w, h, mw;
+  int k, n, w, h, mw;
 
-  n = strlen (text);
+  n = strlen(text);
   mw = h = w = 0;
 
-  mbtowc (0, 0, 0);
-  for (; (k = mbtowc (&wc, c, n)) > 0; c += k, n -= k)
+  mbtowc(0, 0, 0);
+  for (; (k = mbtowc(&wc, c, n)) > 0; c += k, n -= k)
+  {
+    if (*c == '\n')
     {
-      if (*c == '\n')
-	{
-	  if (w > mw)
-	    mw = w;
-	  w = 0;
-	  h += font->height;
-	  continue;
-	}
-
-      w += psplash_font_glyph (font, wc, NULL);
+      if (w > mw)
+        mw = w;
+      w = 0;
+      h += font->height;
+      continue;
     }
 
-  *width  = (w > mw) ? w : mw;
+    w += psplash_font_glyph(font, wc, NULL);
+  }
+
+  *width = (w > mw) ? w : mw;
   *height = (h == 0) ? font->height : h;
 }
 
-void
-psplash_fb_draw_text (PSplashFB         *fb,
-		      int                x,
-		      int                y,
-		      uint8              red,
-		      uint8              green,
-		      uint8              blue,
-		      const PSplashFont *font,
-		      const char        *text)
+void psplash_fb_draw_text(PSplashFB *fb,
+                          int x,
+                          int y,
+                          uint8 red,
+                          uint8 green,
+                          uint8 blue,
+                          const PSplashFont *font,
+                          const char *text)
 {
-  int     h, w, k, n, cx, cy, dx, dy;
-  char   *c = (char*)text;
+  int h, w, k, n, cx, cy, dx, dy;
+  char *c = (char *)text;
   wchar_t wc;
 
-  n = strlen (text);
+  n = strlen(text);
   h = font->height;
   dx = dy = 0;
 
-  mbtowc (0, 0, 0);
-  for (; (k = mbtowc (&wc, c, n)) > 0; c += k, n -= k)
+  mbtowc(0, 0, 0);
+  for (; (k = mbtowc(&wc, c, n)) > 0; c += k, n -= k)
+  {
+    u_int32_t *glyph = NULL;
+
+    if (*c == '\n')
     {
-      u_int32_t *glyph = NULL;
-
-      if (*c == '\n')
-	{
-	  dy += h;
-	  dx  = 0;
-	  continue;
-	}
-
-      w = psplash_font_glyph (font, wc, &glyph);
-
-      if (glyph == NULL)
-	continue;
-
-      for (cy = 0; cy < h; cy++)
-	{
-	  u_int32_t g = *glyph++;
-
-	  for (cx = 0; cx < w; cx++)
-	    {
-	      if (g & 0x80000000)
-		psplash_fb_plot_pixel (fb, x+dx+cx, y+dy+cy,
-				       red, green, blue);
-	      g <<= 1;
-	    }
-	}
-
-      dx += w;
+      dy += h;
+      dx = 0;
+      continue;
     }
-}
 
+    w = psplash_font_glyph(font, wc, &glyph);
+
+    if (glyph == NULL)
+      continue;
+
+    for (cy = 0; cy < h; cy++)
+    {
+      u_int32_t g = *glyph++;
+
+      for (cx = 0; cx < w; cx++)
+      {
+        if (g & 0x80000000)
+          psplash_fb_plot_pixel(fb, x + dx + cx, y + dy + cy,
+                                red, green, blue);
+        g <<= 1;
+      }
+    }
+
+    dx += w;
+  }
+}
