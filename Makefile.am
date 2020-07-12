@@ -21,12 +21,12 @@ psplash_systemd_SOURCES = psplash-systemd.c psplash.h
 endif
 
 if HAVE_RAUC
-psplash_CPPFLAGS = $(SYSTEMD_CFLAGS) -DHAVE_SYSTEMD
+psplash_CPPFLAGS = $(SYSTEMD_CFLAGS) -DHAVE_RAUC
 psplash_LDFLAGS= $(SYSTEMD_LIBS)
 bin_PROGRAMS += psplash-rauc
-psplash_systemd_CPPFLAGS = $(SYSTEMD_CFLAGS)
-psplash_systemd_LDFLAGS= $(SYSTEMD_LIBS)
-psplash_systemd_SOURCES = psplash-rauc.c psplash.h
+psplash_rauc_CPPFLAGS = $(SYSTEMD_CFLAGS)
+psplash_rauc_LDFLAGS= $(SYSTEMD_LIBS)
+psplash_rauc_SOURCES = psplash-rauc.c psplash.h
 endif
 
 EXTRA_DIST = make-image-header.sh
