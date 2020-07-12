@@ -1,4 +1,4 @@
-AC_PREREQ(2.53)
+AC_PREREQ(2.69)
 AC_INIT(psplash, 0.1, [http://bugzilla.o-hand.com/enter_bug.cgi?product=psplash])
 AM_INIT_AUTOMAKE()
 AC_CONFIG_SRCDIR(psplash.c)
@@ -13,19 +13,13 @@ if test "x$GCC" = "xyes"; then
 fi
 
 AC_ARG_WITH([systemd], AS_HELP_STRING([--with-systemd], [Build with systemd support]))
+AC_ARG_WITH([rauc], AS_HELP_STRING([--with-rauc], [Build with rauc support]))
 
 AS_IF([test "x$with_systemd" = "xyes"], [
    PKG_CHECK_MODULES(SYSTEMD, libsystemd >= 221)
 ])
 
 AM_CONDITIONAL([HAVE_SYSTEMD], [test "x$with_systemd" = "xyes"])
-
-AC_ARG_WITH([rauc], AS_HELP_STRING([--with-rauc], [Build with rauc support]))
-
-AS_IF([test "x$with_rauc" = "xyes"], [
-   PKG_CHECK_MODULES(SYSTEMD, libsystemd >= 221)
-])
-
 AM_CONDITIONAL([HAVE_RAUC], [test "x$with_rauc" = "xyes"])
 
 AC_SUBST(GCC_FLAGS)
