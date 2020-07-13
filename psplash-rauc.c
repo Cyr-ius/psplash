@@ -51,7 +51,7 @@ int get_progress(void)
 		"(isi)");
 	
 	if (r < 0) {
-		fprintf(stderr, "Failed to get progress: %s\n", error.message);
+		fprintf(stderr, "[ERROR]: %s\n", error.message);
 		goto finish;
 	}
 
@@ -62,7 +62,7 @@ int get_progress(void)
 	 */
 
 	sd_bus_message_read(message,"(isi)",&current_progress,&msg_info,&depth);
-	DBG("RAUC Information %d %s %d", current_progress, msg_info, depth);
+	DBG("[INFO] RAUC Information %d %s %d", current_progress, msg_info, depth);
 
 	if (current_progress < progress)
 		current_progress = progress;
@@ -71,7 +71,7 @@ int get_progress(void)
 	write(pipe_fd, buffer, len + 1);
 
 	if (progress == 100) {
-		printf("Rauc reported progress of 100%.\n");
+		printf("Rauc reported progress of 100\%.\n");
 		write(pipe_fd, "MSG Update finished.", 24);
 		r = -1;
 	}
