@@ -26,27 +26,30 @@ static int pipe_fd;
 int get_progress(void)
 {
 	sd_bus_error error = SD_BUS_ERROR_NULL;
+	sd_bus_message *message = NULL;
 	static double current_progress = 0;
 	double progress = 0;
+	double depth = 0;
 	sd_bus *bus = NULL;
+	char *msg_info = NULL;
 	int r;
 	char buffer[20];
 	int len;
 
-    /* Connect to the system bus */
+        /* Connect to the system bus */
 	r = sd_bus_open_system(&bus);
 	if (r < 0)
 		goto finish;
 
-    /* Issue the method call and store the respons message in m */
-	r = sd_bus_get_property_trivial(bus,
-		"de.pengutronix.rauc",           /* service to contact */
-		"/",          /* object path */
-		"de.pengutronix.rauc.Install",   /* interface name */
-		"Progress",                           /* method name */
-		&error,                               /* object to return error in */
-		'd',                                  /* return message on success */
-		&progress);                           /* value */
+	r = sd_bus_get_property(bus,
+		"de.pengutronix.rauc",
+		"/",
+		"de.pengutronix.rauc.Installer",
+		"Progress",
+		&error,
+		&message,
+		"(isi)");
+	
 	if (r < 0) {
 		fprintf(stderr, "Failed to get progress: %s\n", error.message);
 		goto finish;
@@ -57,15 +60,19 @@ int get_progress(void)
 	 * progress bar on psplash goes backward by just communicating the
 	 * highest observed progress so far.
 	 */
+
+	sd_bus_message_read(message,"(isi)",&current_progress,&msg_info,&depth);
+	DBG("RAUC Information %d %s %d", current_progress, msg_info, depth);
+
 	if (current_progress < progress)
 		current_progress = progress;
 
-	len = snprintf(buffer, 20, "PROGRESS %d", (int)(current_progress * 100));
+	len = snprintf(buffer, 20, "PROGRESS %d", (int)current_progress);
 	write(pipe_fd, buffer, len + 1);
 
-	if (progress == 1.0) {
-		printf("Systemd reported progress of 1.0, quit psplash.\n");
-		write(pipe_fd, "MSG Update Successful", 24);
+	if (progress == 100) {
+		printf("Rauc reported progress of 100%.\n");
+		write(pipe_fd, "MSG Update finished.", 24);
 		r = -1;
 	}
 
