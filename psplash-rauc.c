@@ -71,7 +71,7 @@ int get_progress(void)
 	write(pipe_fd, buffer, len + 1);
 
 	if (progress == 100) {
-		printf("Rauc reported progress of 100\%.\n");
+		printf("Rauc reported progress of 100, quit psplash.\n");
 		write(pipe_fd, "MSG Update finished.", 24);
 		r = -1;
 	}
