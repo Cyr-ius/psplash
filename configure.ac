@@ -12,6 +12,9 @@ if test "x$GCC" = "xyes"; then
         GCC_FLAGS="-g -Wall -Wextra"
 fi
 
+PKG_CHECK_MODULES(GLIB, glib-2.0 >= 2.0)
+PKG_CHECK_MODULES(GDK_PIXBUF, gdk-pixbuf-2.0)
+
 AC_ARG_WITH([systemd], AS_HELP_STRING([--with-systemd], [Build with systemd support]))
 AC_ARG_WITH([rauc], AS_HELP_STRING([--with-rauc], [Build with rauc support]))
 
