@@ -14,7 +14,10 @@ aclocal.m4
 autom4te.cache/
 .deps/
 *.o
+.vscode/
 
 psplash
 psplash-write
+psplash-systemd
+psplash-rauc
 stamp-h1
