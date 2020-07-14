@@ -47,6 +47,7 @@ int main(int argc, char **argv)
 
   write(pipe_fd, argv[1], strlen(argv[1])+1);
 
+  close(pipe_fd);
   return 0;
 }
 
