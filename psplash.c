@@ -26,6 +26,27 @@ void psplash_exit(int UNUSED(signum))
   psplash_console_reset();
 }
 
+PSplashImage*
+psplash_image(const char *path_image_file){
+  GdkPixbuf *pixbuf;
+  GdkPixdata *pixdata;
+  PSplashImage *image;
+  GError *error = NULL;
+  int bps=0;
+  pixbuf = gdk_pixbuf_new_from_file (path_image_file, &error);
+  bps=gdk_pixbuf_get_n_channels(pixbuf);
+  pixdata = (GdkPixdata*)g_malloc(sizeof(GdkPixdata));       
+  image = (PSplashImage*)g_malloc(sizeof(PSplashImage));       
+  gdk_pixdata_from_pixbuf(pixdata, pixbuf,1);
+  image->height = pixdata->height;
+  image->width = pixdata->width;
+  image->rowstride = pixdata->rowstride;
+  image->pixel_data = pixdata->pixel_data;
+  image->bytes_per_pixel = bps;
+
+  return image;
+}
+
 void psplash_draw_msg(PSplashFB *fb, const char *msg)
 {
   int w, h;
@@ -208,12 +229,15 @@ int main(int argc, char **argv)
 {
   char *rundir;
   int pipe_fd, i = 0, angle = 0, fbdev_id = 0, ret = 0;
+  int enable_fullscreen = 0, fb_h=0;
   PSplashFB *fb;
+  PSplashImage *my_image;
   bool disable_console_switch = FALSE;
   signal(SIGHUP, psplash_exit);
   signal(SIGINT, psplash_exit);
   signal(SIGQUIT, psplash_exit);
-
+  
+  
   while (++i < argc)
   {
     if (!strcmp(argv[i], "-n") || !strcmp(argv[i], "--no-console-switch"))
@@ -241,6 +265,22 @@ int main(int argc, char **argv)
     if (!strcmp(argv[i], "-d") || !strcmp(argv[i], "--debug"))
     {
       enable_debug = TRUE;
+      continue;
+    }
+
+    if (!strcmp(argv[i], "-x") || !strcmp(argv[i], "--fullscreen"))
+    {
+      enable_fullscreen = TRUE;
+      continue;
+    }
+
+    if (!strcmp(argv[i], "-i") || !strcmp(argv[i], "--image"))
+    {
+      if (++i >= argc)
+        goto fail;
+      char path_file_image[255];
+      strcpy(path_file_image,argv[i]);
+      my_image = psplash_image(path_file_image);
       continue;
     }
 
@@ -285,22 +325,22 @@ int main(int argc, char **argv)
   }
 
   /* Clear the background with #ecece1 */
-  psplash_fb_draw_rect(fb, 0, 0, fb->width, fb->height,
-                       PSPLASH_BACKGROUND_COLOR);
+  psplash_fb_draw_rect(fb, 0, 0, fb->width, fb->height, PSPLASH_BACKGROUND_COLOR);
 
   /* Draw the Poky logo  */
+  if (enable_fullscreen)
+    fb_h = (fb->height - my_image->height) / 2;
+  else
+    fb_h = (fb->height * PSPLASH_IMG_SPLIT_NUMERATOR / PSPLASH_IMG_SPLIT_DENOMINATOR - my_image->height) / 2;
+
   psplash_fb_draw_image(fb,
-                        (fb->width - POKY_IMG_WIDTH) / 2,
-#if PSPLASH_IMG_FULLSCREEN
-                        (fb->height - POKY_IMG_HEIGHT) / 2,
-#else
-                        (fb->height * PSPLASH_IMG_SPLIT_NUMERATOR / PSPLASH_IMG_SPLIT_DENOMINATOR - POKY_IMG_HEIGHT) / 2,
-#endif
-                        POKY_IMG_WIDTH,
-                        POKY_IMG_HEIGHT,
-                        POKY_IMG_BYTES_PER_PIXEL,
-                        POKY_IMG_ROWSTRIDE,
-                        POKY_IMG_RLE_PIXEL_DATA);
+                        (fb->width - my_image->width) / 2,
+                        fb_h,
+                        my_image->width,
+                        my_image->height,
+                        my_image->bytes_per_pixel,
+                        my_image->rowstride,
+                        my_image->pixel_data);
 
   /* Draw progress bar border */
   psplash_fb_draw_image(fb,

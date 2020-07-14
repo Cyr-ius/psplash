@@ -35,6 +35,9 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <gdk-pixbuf/gdk-pixbuf.h>
+#include <gdk-pixbuf/gdk-pixdata.h>
+
 typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef int bool;
@@ -71,6 +74,16 @@ typedef struct PSplashFont
    int *index;
    u_int32_t *content;
 } PSplashFont;
+
+typedef struct PSplashImage {
+    int  fd;			
+    guint32 height;    
+    guint32 width;
+    guint32 rowstride;
+    guint8 *pixel_data;
+    int bytes_per_pixel;
+} PSplashImage;
+
 
 #include "psplash-trace.h"
 #include "psplash-fb.h"
