@@ -27,16 +27,16 @@ int get_progress(void)
 {
 	sd_bus_error error = SD_BUS_ERROR_NULL;
 	sd_bus_message *message = NULL;
-	static double current_progress = 0;
-	double progress = 0;
-	double depth = 0;
+	static int current_progress = 0;
+	int progress = 0;
+	int depth = 0;
 	sd_bus *bus = NULL;
 	char *msg_info = NULL;
 	int r;
 	char buffer[20];
 	int len;
 
-        /* Connect to the system bus */
+    /* Connect to the system bus */
 	r = sd_bus_open_system(&bus);
 	if (r < 0)
 		goto finish;
@@ -62,17 +62,21 @@ int get_progress(void)
 	 */
 
 	sd_bus_message_read(message,"(isi)",&current_progress,&msg_info,&depth);
-	DBG("[INFO] RAUC Information %d %s %d", current_progress, msg_info, depth);
-
 	if (current_progress < progress)
 		current_progress = progress;
 
-	len = snprintf(buffer, 20, "PROGRESS %d", (int)current_progress);
+	len = snprintf(buffer, 20, "PROGRESS %d", current_progress);
 	write(pipe_fd, buffer, len + 1);
 
+	char prefix[5]="MSG ";
+	char *bar_text = malloc((strlen(msg_info) + 5) * sizeof(char));
+	strcpy(bar_text, prefix);
+	strcat(bar_text, msg_info);
+	write(pipe_fd,bar_text,strlen(bar_text)+1);
+
 	if (progress == 100) {
-		printf("Rauc reported progress of 100, quit psplash.\n");
-		write(pipe_fd, "MSG Update finished.", 24);
+		printf("Rauc reported progress of 100%%.\n");
+		write(pipe_fd, "MSG Update finished.", 22);
 		r = -1;
 	}
 
