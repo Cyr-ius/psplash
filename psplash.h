@@ -34,9 +34,8 @@
 #include <sys/types.h>
 #include <termios.h>
 #include <unistd.h>
-
-#include <gdk-pixbuf/gdk-pixbuf.h>
-#include <gdk-pixbuf/gdk-pixdata.h>
+#include <gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixbuf.h>
+#include <gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixdata.h>
 
 typedef uint8_t uint8;
 typedef uint16_t uint16;
